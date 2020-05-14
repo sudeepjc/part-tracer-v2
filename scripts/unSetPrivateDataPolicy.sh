@@ -1,0 +1,3 @@
+#!/bin/bash
+
+unset PRIVATE_COLLECTION_POLICY

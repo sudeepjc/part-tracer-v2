@@ -1,0 +1,66 @@
+./network.sh down
+./network.sh up createChannel
+
+//Updates the collection policy path
+source scripts/setPrivateDataPolicy.sh
+
+./network.sh deployCC
+
+export FABRIC_CFG_PATH=${PWD}/configtx
+export CHANNEL_NAME=mychannel
+source scripts/setPeerConnectionParam.sh 1 2
+source scripts/setChannelContext.sh 1
+export DEAL_PRICE=$(echo -n "{\"partId\":\"engine_1\",\"dealPrice\":9999}" | base64 | tr -d \\n)
+
+// This Transaction will fail
+peer chaincode invoke -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME -n partTracer $PEER_CONN_PARMS -c '{"function":"sellPart","Args":["engine_1","Org2MSP","privacy_v1"]}' --transient "{\"PartDealData\":\"$DEAL_PRICE\"}"
+
+// This Transaction will fail
+peer chaincode invoke -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME -n partTracer $PEER_CONN_PARMS -c '{"function":"sellPart","Args":["engine_1","Org2MSP","privacy_v2"]}' --transient "{\"PartDealData\":\"$DEAL_PRICE\"}"
+
+// Sell the engine_1 to Org2
+peer chaincode invoke -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME -n partTracer $PEER_CONN_PARMS -c '{"function":"sellPart","Args":["engine_1","Org2MSP","OpenForOrg1Org2"]}' --transient "{\"PartDealData\":\"$DEAL_PRICE\"}"
+
+
+source scripts/setChannelContext.sh 1
+peer chaincode query -C $CHANNEL_NAME -n partTracer -c '{"Args":["queryPartDealPrice","engine_1","OpenForOrg1Org2"]}'
+
+
+source scripts/setChannelContext.sh 2
+peer chaincode query -C $CHANNEL_NAME -n partTracer -c '{"Args":["queryPartDealPrice","engine_1","OpenForOrg1Org2"]}'
+
+
+source scripts/setChannelContext.sh 3
+// This Transaction will fail showing privacy error
+peer chaincode query -C $CHANNEL_NAME -n partTracer -c '{"Args":["queryPartDealPrice","engine_1","OpenForOrg1Org2"]}'
+peer chaincode query -C $CHANNEL_NAME -n partTracer -c '{"Args":["queryPart","engine_1"]}'
+
+
+
+// Now Sell the same engine to Org3 as Org2
+source scripts/setPeerConnectionParam.sh 2 3
+source scripts/setChannelContext.sh 2
+export DEAL_PRICE=$(echo -n "{\"partId\":\"engine_1\",\"dealPrice\":555}" | base64 | tr -d \\n)
+peer chaincode invoke -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME -n partTracer $PEER_CONN_PARMS -c '{"function":"sellPart","Args":["engine_1","Org3MSP","OpenForOrg2Org3"]}' --transient "{\"PartDealData\":\"$DEAL_PRICE\"}"
+
+
+source scripts/setChannelContext.sh 1
+// This transaction will fail due to privacy
+peer chaincode query -C $CHANNEL_NAME -n partTracer -c '{"Args":["queryPartDealPrice","engine_1","OpenForOrg2Org3"]}'
+peer chaincode query -C $CHANNEL_NAME -n partTracer -c '{"Args":["queryPart","engine_1"]}'
+
+
+source scripts/setChannelContext.sh 2
+peer chaincode query -C $CHANNEL_NAME -n partTracer -c '{"Args":["queryPartDealPrice","engine_1","OpenForOrg2Org3"]}'
+
+
+source scripts/setChannelContext.sh 3
+peer chaincode query -C $CHANNEL_NAME -n partTracer -c '{"Args":["queryPartDealPrice","engine_1","OpenForOrg2Org3"]}'
+
+//As Org3, the current owner try to sell and write the data to OpenForOrg1Org2
+source scripts/setPeerConnectionParam.sh 3 1
+source scripts/setChannelContext.sh 3
+peer chaincode invoke -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME -n partTracer $PEER_CONN_PARMS -c '{"function":"sellPart","Args":["engine_1","Org1MSP","OpenForOrg1Org2"]}' --transient "{\"PartDealData\":\"$DEAL_PRICE\"}"
+
+// This will unset the privacy policy so that you can do older execrsices
+source scripts/unSetPrivateDataPolicy.sh
